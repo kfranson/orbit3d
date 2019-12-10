@@ -234,10 +234,10 @@ class OrbitPlots:
             assert self.multi_instr
             offset_dic = {}
             for i in np.arange(8, 8 + self.nInst, 1):
-                offset = self.extras[walker_idx, step_idx, i]
-                offset_dic[i-8] = offset
+                #offset = self.extras[walker_idx, step_idx, i]
+                offset_dic[i-8] = 0#offset
         except:
-            offset = self.extras[walker_idx, step_idx, 8]
+            offset = 0#self.extras[walker_idx, step_idx, 8]
         return offset_dic
 
     def bestfit_orbit(self):
@@ -423,7 +423,7 @@ class OrbitPlots:
         for year in self.epoch_calendar:
             epoch_int.append(int(year))
 
-        years = [1990,2000,2010,2020,2030]  # NEED TO PUT THIS IN CONFIG.INI
+        years = []  # NEED TO PUT THIS IN CONFIG.INI
         for year in years:
             idx = epoch_int.index(year)
             x = self.dras_ml[idx]
@@ -884,6 +884,11 @@ class OrbitPlots:
             ax3.plot(self.epoch, self.mudec_ml, color='black')
             ax4.plot(self.epoch, np.zeros(len(self.epoch)), 'k--', dashes=(5, 5))
 
+            #if self.usecolorbar is True:
+            #    cbar = fig.colorbar(self.sm, ax=ax1, fraction=self.colorbar_size, pad=self.colorbar_pad)
+            #    cbar.ax3.set_ylabel(self.cmlabel_dic[self.cmref], rotation=270, fontsize=13)
+            #    cbar.ax3.get_yaxis().labelpad = 20
+
             # plot the observed data points
             mualpdatOC_list = []
             mudecdatOC_list = []
@@ -911,7 +916,7 @@ class OrbitPlots:
             self.range_eppm_obs = max(self.ep_mualp_obs) - min(self.ep_mualp_obs)
             range_mualp_obs = max(self.mualp_obs)  - min(self.mualp_obs)
             ax1.set_xlim(min(self.ep_mualp_obs) - self.range_eppm_obs/8., max(self.ep_mualp_obs) + self.range_eppm_obs/8.)
-            ax1.set_ylim(min(self.mualp_obs) - range_mualp_obs/5., max(self.mualp_obs) + range_mualp_obs/5.)
+            #ax1.set_ylim(min(self.mualp_obs) - range_mualp_obs/5., max(self.mualp_obs) + range_mualp_obs/5.)
             ax1.xaxis.set_major_formatter(NullFormatter())
             ax1.xaxis.set_minor_locator(AutoMinorLocator())
             ax1.yaxis.set_minor_locator(AutoMinorLocator())
@@ -922,7 +927,7 @@ class OrbitPlots:
             range_mudec_obs = max(self.mudec_obs)  - min(self.mudec_obs)
             ax3.set_ylabel(r'$\Delta \mu_{\alpha}$ mas/yr')
             ax3.set_xlim(min(self.ep_mudec_obs) - self.range_eppm_obs/8., max(self.ep_mudec_obs) + self.range_eppm_obs/8.)
-            ax3.set_ylim(min(self.mudec_obs) - range_mudec_obs/5., max(self.mudec_obs) + range_mudec_obs/5.)
+            #ax3.set_ylim(min(self.mudec_obs) - range_mudec_obs/5., max(self.mudec_obs) + range_mudec_obs/5.)
             ax3.xaxis.set_major_formatter(NullFormatter())
             ax3.xaxis.set_minor_locator(AutoMinorLocator())
             ax3.yaxis.set_minor_locator(AutoMinorLocator())
