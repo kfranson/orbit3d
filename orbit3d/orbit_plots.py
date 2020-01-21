@@ -15,6 +15,7 @@ import matplotlib.colors as mcolors
 import matplotlib.cm as cm
 from matplotlib.ticker import NullFormatter
 from matplotlib.ticker import AutoMinorLocator
+import sys
 
 
 
@@ -22,7 +23,7 @@ from matplotlib.ticker import AutoMinorLocator
 
 class OrbitPlots:
 
-    def __init__(self, title, Hip, epoch_interval, cmref, RVfile=None, relAstfile=None, num_lines=50, pred_yr=[1990, 2000, 2010, 2020, 2030], cm_name='viridis', burnin=100, nplanets=1, rvpm_ref=0):
+    def __init__(self, title, Hip, epoch_interval, cmref, RVfile=None, relAstfile=None, num_lines=50, pred_yr=[1990, 2000, 2010, 2020, 2030], cm_name='viridis', burnin=100, steps=1500, nplanets=1, rvpm_ref=0):
 
         self.title = title
         self.Hip = Hip
@@ -40,29 +41,29 @@ class OrbitPlots:
 
         t = fits.open('HGCA_vDR2_corrected.fits')[1].data
         self.use_epoch_astrometry = False
+        rvpath = '/Users/yunlin/physics/research/orbit_fitting/rvdata/' # '/Users/yunlin/physis/research/orbit_fitting/rvdata/'
+        relAstpath = '/Users/yunlin/physics/research/orbit_fitting/relAstdata/'
         if RVfile != None:
-            self.RVfile = RVfile
+            self.RVfile = rvpath + RVfile
         else:
-            self.RVfile = self.title + '_RV.dat'
+            self.RVfile = rvpath + self.title + '_RV.dat'
         if relAstfile != None:
-            self.relAstfile = relAstfile
+            self.relAstfile = relAstpath + relAstfile
         else:
-            self.relAstfile = self.title + '_relAST.txt'
+            self.relAstfile = relAstpath + self.title + '_relAST.txt'
 
-        self.steps = 15000
+        self.steps = steps
         self.start_epoch = self.calendar_to_JD(self.epoch_interval[0])
         self.end_epoch = self.calendar_to_JD(self.epoch_interval[1])
         self.range_epoch = self.end_epoch - self.start_epoch
-        self.epoch = np.linspace(self.start_epoch, self.end_epoch + 0.5*self.range_epoch, self.steps)   # + 0.5*self.range_epoch in case some oribts have longer period and appear to be broken in astrometry / RV orbits
+        self.epoch = np.linspace(self.start_epoch - 0.5*self.range_epoch, self.end_epoch + 0.5*self.range_epoch, self.steps)   # + 0.5*self.range_epoch in case some oribts have longer period and appear to be broken in astrometry / RV orbits
         self.epoch_cal = np.zeros(len(self.epoch))
         for i in range(len(self.epoch_cal)):
             self.epoch_cal[i] = self.JD_to_calendar(self.epoch[i])
 
         # load in mcmc's result
-        path = '/Users/yunlin/physics/research/orbit_fitting/orbit3d_0/'
+        path = '/Users/yunlin/physics/research/orbit_fitting/mcmc_chains/'
         file = self.title + '_chain000.fits'
-        # path = '/Users/yunlin/physics/research/Gl86/'
-        # file = 'HIP10138_chain000_1planet_2E5_5temp_nopriors.fits'
         self.tt, self.lnp, self.extras = [fits.open(path + file)[i].data for i in range(3)]
         for i in range(nplanets):
             self.tt[:, :, 2+i*7+5] %= 2*np.pi
@@ -75,24 +76,20 @@ class OrbitPlots:
         self.RV_obs_err = rvdat[:, 2]
         self.nRV = rvdat.shape[0]
 
-        try:
-            RVinst = (rvdat[:, 3]).astype(np.int32)
-            # Check to see that the column we loaded was an integer
-            assert np.all(RVinst == rvdat[:, 3])
-            self.nInst = int(np.amax(rvdat[:, 3]) + 1)
+        RVinst = (rvdat[:, 3]).astype(np.int32)
+        # Check to see that the column we loaded was an integer
+        assert np.all(RVinst == rvdat[:, 3])
+        self.nInst = int(np.amax(rvdat[:, 3]) + 1)
 
-            self.idx_dic = {}
-            self.epoch_obs_dic = {}
-            self.RV_obs_dic = {}
-            self.RV_obs_err_dic = {}
-            for i in range(self.nInst):
-                self.idx_dic[i] = (np.where(RVinst == i)[0][0], np.where(RVinst == i)[0][-1])
-                self.epoch_obs_dic[i] = self.epoch_obs[self.idx_dic[i][0]: self.idx_dic[i][-1] + 1]    # is it possible that one instr only take one data?
-                self.RV_obs_dic[i] = self.RV_obs[self.idx_dic[i][0]: self.idx_dic[i][-1] + 1]
-                self.RV_obs_err_dic[i] = self.RV_obs_err[self.idx_dic[i][0]: self.idx_dic[i][-1] + 1]
-            self.multi_instr = True
-        except:
-            self.multi_instr = False
+        self.idx_dic = {}
+        self.epoch_obs_dic = {}
+        self.RV_obs_dic = {}
+        self.RV_obs_err_dic = {}
+        for i in range(self.nInst):
+            self.idx_dic[i] = (np.where(RVinst == i)[0][0], np.where(RVinst == i)[0][-1])
+            self.epoch_obs_dic[i] = self.epoch_obs[self.idx_dic[i][0]: self.idx_dic[i][-1] + 1]
+            self.RV_obs_dic[i] = self.RV_obs[self.idx_dic[i][0]: self.idx_dic[i][-1] + 1]
+            self.RV_obs_err_dic[i] = self.RV_obs_err[self.idx_dic[i][0]: self.idx_dic[i][-1] + 1]
 
         # load in reltive use_epoch_astrometry:
         try:
@@ -116,15 +113,15 @@ class OrbitPlots:
 
         try:
             i = int(np.where(t['hip_id'] == Hip)[0])
-            self.ep_mualp_obs = np.array([t['epoch_ra_hip'][i], t['epoch_ra_gaia'][i]])
-            self.ep_mudec_obs = np.array([t['epoch_dec_hip'][i], t['epoch_dec_gaia'][i]])
-            self.mualp_obs = np.array([t['pmra_hip'][i], t['pmra_gaia'][i]])
-            self.mualp_obs_err = np.array([t['pmra_hip_error'][i], t['pmra_gaia_error'][i]])
-            self.mudec_obs = np.array([t['pmdec_hip'][i], t['pmdec_gaia'][i]])
-            self.mudec_obs_err = np.array([t['pmdec_hip_error'][i], t['pmdec_gaia_error'][i]])
-            for i in range(len(self.ep_mualp_obs)):
-                self.ep_mualp_obs[i] = self.calendar_to_JD(self.ep_mualp_obs[i])
-                self.ep_mudec_obs[i] = self.calendar_to_JD(self.ep_mudec_obs[i])
+            self.ep_pmra_obs = np.array([t['epoch_ra_hip'][i], t['epoch_ra_gaia'][i]])
+            self.ep_pmdec_obs = np.array([t['epoch_dec_hip'][i], t['epoch_dec_gaia'][i]])
+            self.pmra_obs = np.array([t['pmra_hip'][i], t['pmra_gaia'][i]])
+            self.pmra_obs_err = np.array([t['pmra_hip_error'][i], t['pmra_gaia_error'][i]])
+            self.pmdec_obs = np.array([t['pmdec_hip'][i], t['pmdec_gaia'][i]])
+            self.pmdec_obs_err = np.array([t['pmdec_hip_error'][i], t['pmdec_gaia_error'][i]])
+            for i in range(len(self.ep_pmra_obs)):
+                self.ep_pmra_obs[i] = self.calendar_to_JD(self.ep_pmra_obs[i])
+                self.ep_pmdec_obs[i] = self.calendar_to_JD(self.ep_pmdec_obs[i])
             self.have_pmdat = True
         except:
             self.have_pmdat = False
@@ -154,14 +151,14 @@ class OrbitPlots:
             self.dras_ml, self.ddecs_ml = -(1. + par.mpri/par.msec)*self.plx*self.dras_ml, -(1. + par.mpri/par.msec)*self.plx*self.ddecs_ml
             self.relsep_ml = model.return_relsep()*self.plx       # this is relative separation in terms of arcsec
             self.PA_ml = (model.return_PAs()*180/np.pi) % 360
-            mualp_ml, mudec_ml = model.return_proper_motions(par)
-            mualp_ml, mudec_ml = 1e3*self.plx*365.25*mualp_ml, 1e3*self.plx*365.25*mudec_ml   # convert from arcsec/day to mas/yr
+            pmra_ml, pmdec_ml = model.return_proper_motions(par)
+            pmra_ml, pmdec_ml = 1e3*self.plx*365.25*pmra_ml, 1e3*self.plx*365.25*pmdec_ml   # convert from arcsec/day to mas/yr
             if i == 0:
-                self.mualp_ml = mualp_ml
-                self.mudec_ml = mudec_ml
+                self.pmra_ml = pmra_ml
+                self.pmdec_ml = pmdec_ml
             else:
-                self.mualp_ml += mualp_ml
-                self.mudec_ml += mudec_ml
+                self.pmra_ml += pmra_ml
+                self.pmdec_ml += pmdec_ml
             self.dras_ml_list.append(self.dras_ml)
             self.ddecs_ml_list.append(self.ddecs_ml)
             self.relsep_ml_list.append(self.relsep_ml)
@@ -170,27 +167,25 @@ class OrbitPlots:
             self.omega_list.append(par.arg)
 
         self.RV_ml = model.return_RVs()
-        self.mualp_ml += self.extras[self.beststep[0], self.beststep[1], 1]*1000
-        self.mudec_ml += self.extras[self.beststep[0], self.beststep[1], 2]*1000
+        self.pmra_ml += self.extras[self.beststep[0], self.beststep[1], 1]*1000
+        self.pmdec_ml += self.extras[self.beststep[0], self.beststep[1], 2]*1000
         self.f_RVml = interp1d(self.epoch, self.RV_ml)
 
-        # calculate the offset of the observed data
-        try:
-            # calculate the differences of offsets (del_offset), and shift the data according to
-            # del_offset, which normalizes the offset for different instruments.
-            assert self.multi_instr
-            offset_dic = {}
-            del_offset_dic = {}
-            for i in range(self.nInst):
-                result = op.minimize(self.chi_sqr, 70, args=(self.f_RVml, self.epoch_obs_dic[i], self.RV_obs_dic[i], self.RV_obs_err_dic[i]))
-                offset_dic[i] = result['x']
-            offset = min(offset_dic.values())[0]
-            for i in range(self.nInst):
-                del_offset_dic[i] = offset_dic[i] - offset
-                self.RV_obs_dic[i] += del_offset_dic[i]
-        except:
-            result = op.minimize(self.chi_sqr, 70, args=(self.f_RVml, self.epoch_obs, self.RV_obs, self.RV_obs_err))   # 70 is initial guess
-            offset = result['x']
+        # calculate the offset of the observed RV data
+
+        '''
+        calculate the differences of offsets (del_offset), and shift the data
+        according to del_offset, which normalizes the offset for different instruments.
+        '''
+        offset_dic = {}
+        del_offset_dic = {}
+        print(self.nInst)
+        for i in range(self.nInst):
+            offset_dic[i] = self.extras[self.beststep][0][-self.nInst+i] # i=0 -> last one; i=1 -> last but one...
+        offset = min(offset_dic.values())
+        for i in range(self.nInst):
+            del_offset_dic[i] = offset_dic[i] - offset
+            self.RV_obs_dic[i] += del_offset_dic[i]
 
         # shift most likely RV to towards data points
         self.RV_ml -= offset
@@ -205,8 +200,8 @@ class OrbitPlots:
         self.ddecs_dic = {}
         self.relsep_dic = {}
         self.PA_dic = {}
-        self.mualp_dic = {}
-        self.mudec_dic = {}
+        self.pmra_dic = {}
+        self.pmdec_dic = {}
 
         for j in range(self.num_lines):
 
@@ -228,14 +223,14 @@ class OrbitPlots:
                 dras, ddecs = -(1. + par.mpri/par.msec)*self.plx*dras, -(1. + par.mpri/par.msec)*self.plx*ddecs  # convert from AU to arcsec
                 relsep = model.return_relsep()*self.plx
                 PA = (model.return_PAs()*180/np.pi) % 360
-                mualp_tmp, mudec_tmp = model.return_proper_motions(par)
-                mualp_tmp, mudec_tmp = 1e3*self.plx*365.25*mualp_tmp, 1e3*self.plx*365.25*mudec_tmp   # convert from arcsec/day to mas/yr
+                pmra_tmp, pmdec_tmp = model.return_proper_motions(par)
+                pmra_tmp, pmdec_tmp = 1e3*self.plx*365.25*pmra_tmp, 1e3*self.plx*365.25*pmdec_tmp   # convert from arcsec/day to mas/yr
                 if i == 0:
-                    mualp = mualp_tmp
-                    mudec = mudec_tmp
+                    pmra = pmra_tmp
+                    pmdec = pmdec_tmp
                 else:
-                    mualp += mualp_tmp
-                    mudec += mudec_tmp
+                    pmra += pmra_tmp
+                    pmdec += pmdec_tmp
 
                 cmref = getattr(par, self.cmref)
                 self.dras_dic[(cmref, i)] = dras
@@ -249,12 +244,12 @@ class OrbitPlots:
             f_RV = interp1d(self.epoch, RV)
             RV -= offset + (f_RV(midep_RV_obs) - RV_ref_val)
             # shift curves to the data points
-            mualp += self.extras[walker_idx, step_idx, 1]*1000
-            mudec += self.extras[walker_idx, step_idx, 2]*1000
+            pmra += self.extras[walker_idx, step_idx, 1]*1000
+            pmdec += self.extras[walker_idx, step_idx, 2]*1000
 
             self.RV_dic[cmref] = RV
-            self.mualp_dic[cmref] = mualp
-            self.mudec_dic[cmref] = mudec
+            self.pmra_dic[cmref] = pmra
+            self.pmdec_dic[cmref] = pmdec
 
         '''
         Sort the dras_dic, ddecs_dic, relsep_dic, PA_dic in terms of msec/ecc/etc.
@@ -284,8 +279,8 @@ class OrbitPlots:
         self.PA_dic = dics[3]
 
         self.RV_dic = dict(sorted(self.RV_dic.items(), key=lambda items: items[0]))
-        self.mualp_dic = dict(sorted(self.mualp_dic.items(), key=lambda items: items[0]))
-        self.mudec_dic = dict(sorted(self.mudec_dic.items(), key=lambda items: items[0]))
+        self.pmra_dic = dict(sorted(self.pmra_dic.items(), key=lambda items: items[0]))
+        self.pmdec_dic = dict(sorted(self.pmdec_dic.items(), key=lambda items: items[0]))
 
         self.dic_keys = []
         for key in self.dras_dic:
@@ -295,8 +290,8 @@ class OrbitPlots:
         self.ddecs_dic_vals = list(self.ddecs_dic.values())
         self.relsep_dic_vals = list(self.relsep_dic.values())
         self.PA_dic_vals = list(self.PA_dic.values())
-        self.mualp_dic_vals = list(self.mualp_dic.values())
-        self.mudec_dic_vals = list(self.mudec_dic.values())
+        self.pmra_dic_vals = list(self.pmra_dic.values())
+        self.pmdec_dic_vals = list(self.pmdec_dic.values())
 
 
     ############### Auxiliary Functions ###############
@@ -363,7 +358,7 @@ class OrbitPlots:
             for i in range(self.num_lines):
                 ax.plot(self.dras_dic_vals[i+j*self.num_lines], self.ddecs_dic_vals[i+j*self.num_lines], color=self.colormap(self.normalize(self.nValues[i])), alpha=0.3)
 
-            # plot the most likely one
+            # plot the most likely ones
             dras_ml = self.dras_ml_list[j]
             ddecs_ml = self.ddecs_ml_list[j]
             ax.plot(dras_ml, ddecs_ml, color='black')
@@ -501,12 +496,8 @@ class OrbitPlots:
         ax.plot(self.epoch, self.RV_ml, color='black')
 
         # plot the observed data points (RV & relAst)
-        try:
-            assert self.multi_instr
-            for i in range(self.nInst):
-                ax.plot(self.epoch_obs_dic[i], self.RV_obs_dic[i], self.color_list[i]+'o', markersize=2)
-        except:
-            ax.plot(self.epoch_obs, self.RV_obs, 'ro', markersize=2)
+        for i in range(self.nInst):
+            ax.plot(self.epoch_obs_dic[i], self.RV_obs_dic[i], self.color_list[i]+'o', markersize=2)
 
         # manually change the x tick labels from JD to calendar years
         epoch_ticks = np.linspace(self.start_epoch, self.end_epoch, 5)
@@ -560,30 +551,20 @@ class OrbitPlots:
                 RV_OC[i][j] -= self.f_RVml(self.epoch[j])
             ax2.plot(self.epoch, RV_OC[i], color=self.colormap(self.normalize(self.nValues[i])), alpha=0.3)
 
-        # plot the most likely one
+        # plot the most likely ones
         ax1.plot(self.epoch, self.RV_ml, color='black')
         ax2.plot(self.epoch, np.zeros(len(self.epoch)), 'k--', dashes=(5, 5))
 
         # plot the observed data points
         datOC_list = []
-        try:
-            assert self.multi_instr
-            for i in range(self.nInst):
-                ax1.errorbar(self.epoch_obs_dic[i], self.RV_obs_dic[i], yerr=self.RV_obs_err_dic[i], fmt=self.color_list[i]+'o', ecolor='black', capsize=3, zorder=99)
-                ax1.scatter(self.epoch_obs_dic[i], self.RV_obs_dic[i], s=45, facecolors='none', edgecolors='k', zorder=100, alpha=0.5)
-                for j in range(len(self.epoch_obs_dic[i])):
-                    OC = self.RV_obs_dic[i][j] - self.f_RVml(self.epoch_obs_dic[i][j])
-                    datOC_list.append(OC)
-                    ax2.errorbar(self.epoch_obs_dic[i][j], OC, yerr=self.RV_obs_err_dic[i][j], fmt=self.color_list[i]+'o', ecolor='black', capsize=3, zorder=99)
-                    ax2.scatter(self.epoch_obs_dic[i][j], OC, s=45, facecolors='none', edgecolors='k', zorder=100, alpha=0.5)
-        except:
-            ax1.errorbar(self.epoch_obs, self.RV_obs, yerr=self.RV_obs_err, fmt='bo', ecolor='black', capsize=3, zorder=99)
-            ax1.scatter(self.epoch_obs, self.RV_obs, s=45, facecolors='none', edgecolors='k', zorder=100, alpha=1)
-            for i in range(len(self.epoch_obs)):
-                OC = self.RV_obs[i] - self.f_RVml(self.epoch_obs[i])
+        for i in range(self.nInst):
+            ax1.errorbar(self.epoch_obs_dic[i], self.RV_obs_dic[i], yerr=self.RV_obs_err_dic[i], fmt=self.color_list[i]+'o', ecolor='black', capsize=3, zorder=99)
+            ax1.scatter(self.epoch_obs_dic[i], self.RV_obs_dic[i], s=45, facecolors='none', edgecolors='k', zorder=100, alpha=0.5)
+            for j in range(len(self.epoch_obs_dic[i])):
+                OC = self.RV_obs_dic[i][j] - self.f_RVml(self.epoch_obs_dic[i][j])
                 datOC_list.append(OC)
-                ax2.errorbar(self.epoch_obs[i], OC, yerr=self.RV_obs_err[i], fmt='bo', ecolor='black', capsize=3, zorder=99)
-                ax2.scatter(self.epoch_obs[i], OC, s=45, facecolors='none', edgecolors='k', zorder=100, alpha=1)
+                ax2.errorbar(self.epoch_obs_dic[i][j], OC, yerr=self.RV_obs_err_dic[i][j], fmt=self.color_list[i]+'o', ecolor='black', capsize=3, zorder=99)
+                ax2.scatter(self.epoch_obs_dic[i][j], OC, s=45, facecolors='none', edgecolors='k', zorder=100, alpha=0.5)
 
         # manually change the x tick labels from JD to calendar years
         epoch_ticks = np.linspace(self.epoch_obs[0], self.epoch_obs[-1], 5)
@@ -647,7 +628,7 @@ class OrbitPlots:
                         relsep_OC[i][j] -= self.relsep_ml_list[k][j]
                     ax2.plot(self.epoch, relsep_OC[i], color=self.colormap(self.normalize(self.nValues[i])), alpha=0.3)
 
-                # plot the most likely one
+                # plot the most likely ones
                 ax1.plot(self.epoch, self.relsep_ml_list[k], color='black')
                 ax2.plot(self.epoch, np.zeros(len(self.epoch)), 'k--', dashes=(5, 5))
 
@@ -766,7 +747,7 @@ class OrbitPlots:
                         PA_OC[i][j] -= f_PAml(self.epoch[j])
                     ax2.plot(self.epoch, PA_OC[i], color=self.colormap(self.normalize(self.nValues[i])), alpha=0.3)
 
-                # plot the most likely one
+                # plot the most likely ones
                 ax1.plot(self.epoch, self.PA_ml_list[k], color='black')
                 ax2.plot(self.epoch, np.zeros(len(self.epoch)), 'k--', dashes=(5, 5))
 
@@ -862,36 +843,44 @@ class OrbitPlots:
             ax4 = fig.add_axes((0.55, 0.10, 0.35, 0.15))
 
             # plot the num_lines randomly selected curves
-            mualp_OC = self.mualp_dic_vals
-            mudec_OC = self.mudec_dic_vals
-            for i in range(self.num_lines):
-                ax1.plot(self.epoch, self.mualp_dic_vals[i], color=self.colormap(self.normalize(self.nValues[i])), alpha=0.3)
-                ax3.plot(self.epoch, self.mudec_dic_vals[i], color=self.colormap(self.normalize(self.nValues[i])), alpha=0.3)
-                for j in range(len(self.epoch)):
-                    mualp_OC[i][j] -= self.mualp_ml[j] #self.f_mualpml(self.epoch[j])
-                    mudec_OC[i][j] -= self.mudec_ml[j] #self.f_mudecml(self.epoch[j])
-                ax2.plot(self.epoch, mualp_OC[i], color=self.colormap(self.normalize(self.nValues[i])), alpha=0.3)
-                ax4.plot(self.epoch, mudec_OC[i], color=self.colormap(self.normalize(self.nValues[i])), alpha=0.3)
 
-            # plot the most likely one
-            ax1.plot(self.epoch, self.mualp_ml, color='black')
+            '''
+            set the curves (connected by self.steps points) in the OC plot equal
+            to the regular proper motion curves and each points on the curves
+            will be subtracted by the most likely value later, in order to make
+            the OC plots. The randomly selected regular proper motion curves
+            will also be plotted here.
+            '''
+            pmra_OC = self.pmra_dic_vals
+            pmdec_OC = self.pmdec_dic_vals
+            for i in range(self.num_lines):
+                ax1.plot(self.epoch, self.pmra_dic_vals[i], color=self.colormap(self.normalize(self.nValues[i])), alpha=0.3)
+                ax3.plot(self.epoch, self.pmdec_dic_vals[i], color=self.colormap(self.normalize(self.nValues[i])), alpha=0.3)
+                for j in range(len(self.epoch)):
+                    pmra_OC[i][j] -= self.pmra_ml[j]
+                    pmdec_OC[i][j] -= self.pmdec_ml[j]
+                ax2.plot(self.epoch, pmra_OC[i], color=self.colormap(self.normalize(self.nValues[i])), alpha=0.3)
+                ax4.plot(self.epoch, pmdec_OC[i], color=self.colormap(self.normalize(self.nValues[i])), alpha=0.3)
+
+            # plot the most likely ones
+            ax1.plot(self.epoch, self.pmra_ml, color='black')
             ax2.plot(self.epoch, np.zeros(len(self.epoch)), 'k--', dashes=(5, 5))
-            ax3.plot(self.epoch, self.mudec_ml, color='black')
+            ax3.plot(self.epoch, self.pmdec_ml, color='black')
             ax4.plot(self.epoch, np.zeros(len(self.epoch)), 'k--', dashes=(5, 5))
 
             # plot the observed data points
-            mualpdatOC_list = []
-            mudecdatOC_list = []
-            ax1.errorbar(self.ep_mualp_obs, self.mualp_obs, yerr=self.mualp_obs_err, color='coral', fmt='o', ecolor='black', capsize=3, zorder=99)
-            ax1.scatter(self.ep_mualp_obs, self.mualp_obs, s=45, facecolors='none', edgecolors='k', zorder=100, alpha=1)
-            ax3.errorbar(self.ep_mudec_obs, self.mudec_obs, yerr=self.mualp_obs_err, color='coral', fmt='o', ecolor='black', capsize=3, zorder=99)
-            ax3.scatter(self.ep_mudec_obs, self.mudec_obs, s=45, facecolors='none', edgecolors='k', zorder=100, alpha=1)
+            pmradatOC_list = []
+            pmdecdatOC_list = []
+            ax1.errorbar(self.ep_pmra_obs, self.pmra_obs, yerr=self.pmra_obs_err, color='coral', fmt='o', ecolor='black', capsize=3, zorder=99)
+            ax1.scatter(self.ep_pmra_obs, self.pmra_obs, s=45, facecolors='none', edgecolors='k', zorder=100, alpha=1)
+            ax3.errorbar(self.ep_pmdec_obs, self.pmdec_obs, yerr=self.pmra_obs_err, color='coral', fmt='o', ecolor='black', capsize=3, zorder=99)
+            ax3.scatter(self.ep_pmdec_obs, self.pmdec_obs, s=45, facecolors='none', edgecolors='k', zorder=100, alpha=1)
 
             # the OC plots
-            for i in range(len(self.ep_mualp_obs)):
-                ep_obs = np.array([self.ep_mudec_obs[i]])
+            for i in range(len(self.ep_pmra_obs)):
+                ep_obs = np.array([self.ep_pmdec_obs[i]])
 
-                # compute the most likely value of mualp, mudec at the epoch when the data point is recorded
+                # compute the most likely value of pmra, pmdec at the epoch when the data point is recorded
                 for l in range(self.nplanets):
                     data = orbit.Data(self.Hip, self.RVfile, self.relAstfile, self.use_epoch_astrometry)
                     data.custom_epochs(ep_obs)
@@ -900,37 +889,37 @@ class OrbitPlots:
                     data.custom_epochs(ep_obs, iplanet=l)
                     orbit.calc_EA_RPP(data, par, model)
                     orbit.calc_offsets(data, par, model, l)
-                    mualp_tmp, mudec_tmp = model.return_proper_motions(par)
-                    mualp_tmp, mudec_tmp = 1e3*self.plx*365.25*mualp_tmp, 1e3*self.plx*365.25*mudec_tmp   # convert from arcsec/day to mas/yr
+                    pmra_tmp, pmdec_tmp = model.return_proper_motions(par)
+                    pmra_tmp, pmdec_tmp = 1e3*self.plx*365.25*pmra_tmp, 1e3*self.plx*365.25*pmdec_tmp   # convert from arcsec/day to mas/yr
                     if l == 0:
-                        mualp = mualp_tmp
-                        mudec = mudec_tmp
+                        pmra = pmra_tmp
+                        pmdec = pmdec_tmp
                     else:
-                        mualp += mualp_tmp
-                        mudec += mudec_tmp
+                        pmra += pmra_tmp
+                        pmdec += pmdec_tmp
 
-                mualp += self.extras[self.beststep[0], self.beststep[1], 1]*1000
-                mudec += self.extras[self.beststep[0], self.beststep[1], 2]*1000
-                dat_OC = self.mualp_obs[i] - mualp
-                dat_OC = self.mudec_obs[i] - mudec
-                mualpdatOC_list.append(dat_OC)
-                mudecdatOC_list.append(dat_OC)
+                pmra += self.extras[self.beststep[0], self.beststep[1], 1]*1000
+                pmdec += self.extras[self.beststep[0], self.beststep[1], 2]*1000
+                pmra_OC = self.pmra_obs[i] - pmra
+                pmdec_OC = self.pmdec_obs[i] - pmdec
+                pmradatOC_list.append(pmra_OC)
+                pmdecdatOC_list.append(pmdec_OC)
 
-            ax2.errorbar(self.ep_mualp_obs, mualpdatOC_list, yerr=self.mualp_obs_err, color='coral', fmt='o', ecolor='black', capsize=3, zorder=99)
-            ax2.scatter(self.ep_mualp_obs, mualpdatOC_list, s=45, facecolors='none', edgecolors='k', zorder=100, alpha=1)
-            ax4.errorbar(self.ep_mudec_obs, mudecdatOC_list, yerr=self.mudec_obs_err, color='coral', fmt='o', ecolor='black', capsize=3, zorder=99)
-            ax4.scatter(self.ep_mudec_obs, mudecdatOC_list, s=45, facecolors='none', edgecolors='k', zorder=100, alpha=1)
+            ax2.errorbar(self.ep_pmra_obs, pmradatOC_list, yerr=self.pmra_obs_err, color='coral', fmt='o', ecolor='black', capsize=3, zorder=99)
+            ax2.scatter(self.ep_pmra_obs, pmradatOC_list, s=45, facecolors='none', edgecolors='k', zorder=100, alpha=1)
+            ax4.errorbar(self.ep_pmdec_obs, pmdecdatOC_list, yerr=self.pmdec_obs_err, color='coral', fmt='o', ecolor='black', capsize=3, zorder=99)
+            ax4.scatter(self.ep_pmdec_obs, pmdecdatOC_list, s=45, facecolors='none', edgecolors='k', zorder=100, alpha=1)
 
             # manually change the x tick labels from JD to calendar years
-            epoch_ticks = np.linspace(self.ep_mualp_obs[0], self.ep_mualp_obs[-1], 5)
+            epoch_ticks = np.linspace(self.ep_pmra_obs[0], self.ep_pmra_obs[-1], 5)
             epoch_label = np.zeros(len(epoch_ticks))
             for i in range(len(epoch_ticks)):
                 epoch_label[i] = round(self.JD_to_calendar(epoch_ticks[i]))
 
-            self.range_eppm_obs = max(self.ep_mualp_obs) - min(self.ep_mualp_obs)
-            range_mualp_obs = max(self.mualp_obs)  - min(self.mualp_obs)
-            ax1.set_xlim(min(self.ep_mualp_obs) - self.range_eppm_obs/8., max(self.ep_mualp_obs) + self.range_eppm_obs/8.)
-            # ax1.set_ylim(min(self.mualp_obs) - range_mualp_obs/5., max(self.mualp_obs) + range_mualp_obs/5.)
+            self.range_eppm_obs = max(self.ep_pmra_obs) - min(self.ep_pmra_obs)
+            range_pmra_obs = max(self.pmra_obs)  - min(self.pmra_obs)
+            ax1.set_xlim(min(self.ep_pmra_obs) - self.range_eppm_obs/5., max(self.ep_pmra_obs) + self.range_eppm_obs/5.)
+            ax1.set_ylim(min(self.pmra_obs) - range_pmra_obs/5., max(self.pmra_obs) + range_pmra_obs/5.)
             ax1.xaxis.set_major_formatter(NullFormatter())
             ax1.xaxis.set_minor_locator(AutoMinorLocator())
             ax1.yaxis.set_minor_locator(AutoMinorLocator())
@@ -938,10 +927,10 @@ class OrbitPlots:
             ax1.set_title(self.title)
             ax1.set_ylabel(r'$\Delta \mu_{\alpha}$ (mas/yr)')
 
-            range_mudec_obs = max(self.mudec_obs)  - min(self.mudec_obs)
+            range_pmdec_obs = max(self.pmdec_obs)  - min(self.pmdec_obs)
             ax3.set_ylabel(r'$\Delta \mu_{\alpha}$ mas/yr')
-            ax3.set_xlim(min(self.ep_mudec_obs) - self.range_eppm_obs/8., max(self.ep_mudec_obs) + self.range_eppm_obs/8.)
-            # ax3.set_ylim(min(self.mudec_obs) - range_mudec_obs/5., max(self.mudec_obs) + range_mudec_obs/5.)
+            ax3.set_xlim(min(self.ep_pmdec_obs) - self.range_eppm_obs/5., max(self.ep_pmdec_obs) + self.range_eppm_obs/5.)
+            ax3.set_ylim(min(self.pmdec_obs) - range_pmdec_obs/5., max(self.pmdec_obs) + range_pmdec_obs/5.)
             ax3.xaxis.set_major_formatter(NullFormatter())
             ax3.xaxis.set_minor_locator(AutoMinorLocator())
             ax3.yaxis.set_minor_locator(AutoMinorLocator())
@@ -949,9 +938,9 @@ class OrbitPlots:
             ax3.set_title(self.title)
             ax3.set_ylabel(r'$\Delta \mu_{\delta}$ (mas/yr)')
 
-            range_mualpdatOC = max(mualpdatOC_list) - min(mualpdatOC_list)
-            ax2.set_xlim(min(self.ep_mualp_obs) - self.range_eppm_obs/8., max(self.ep_mualp_obs) + self.range_eppm_obs/8.)
-            ax2.set_ylim(min(mualpdatOC_list) - range_mualpdatOC, max(mualpdatOC_list) + range_mualpdatOC)
+            range_pmradatOC = max(pmradatOC_list) - min(pmradatOC_list)
+            ax2.set_xlim(min(self.ep_pmra_obs) - self.range_eppm_obs/5., max(self.ep_pmra_obs) + self.range_eppm_obs/5.)
+            ax2.set_ylim(min(pmradatOC_list) - range_pmradatOC, max(pmradatOC_list) + range_pmradatOC)
             ax2.set_xticks(epoch_ticks)
             ax2.set_xticklabels([str(int(i)) for i in epoch_label])
             ax2.xaxis.set_minor_locator(AutoMinorLocator())
@@ -960,9 +949,9 @@ class OrbitPlots:
             ax2.set_xlabel('Epoch (yr)')
             ax2.set_ylabel('O-C')
 
-            range_mudecdatOC = max(mudecdatOC_list) - min(mudecdatOC_list)
-            ax4.set_xlim(min(self.ep_mudec_obs) - self.range_eppm_obs/8., max(self.ep_mudec_obs) + self.range_eppm_obs/8.)
-            ax4.set_ylim(min(mudecdatOC_list) - range_mudecdatOC, max(mudecdatOC_list) + range_mudecdatOC)
+            range_pmdecdatOC = max(pmdecdatOC_list) - min(pmdecdatOC_list)
+            ax4.set_xlim(min(self.ep_pmdec_obs) - self.range_eppm_obs/5., max(self.ep_pmdec_obs) + self.range_eppm_obs/5.)
+            ax4.set_ylim(min(pmdecdatOC_list) - range_pmdecdatOC, max(pmdecdatOC_list) + range_pmdecdatOC)
             ax4.set_xticks(epoch_ticks)
             ax4.set_xticklabels([str(int(i)) for i in epoch_label])
             ax4.xaxis.set_minor_locator(AutoMinorLocator())
@@ -978,12 +967,12 @@ class OrbitPlots:
 
             # plot the num_lines randomly selected curves
             for i in range(self.num_lines):
-                ax1.plot(self.epoch, self.mualp_dic_vals[i], color=self.colormap(self.normalize(self.nValues[i])), alpha=0.3)
-                ax2.plot(self.epoch, self.mudec_dic_vals[i], color=self.colormap(self.normalize(self.nValues[i])), alpha=0.3)
+                ax1.plot(self.epoch, self.pmra_dic_vals[i], color=self.colormap(self.normalize(self.nValues[i])), alpha=0.3)
+                ax2.plot(self.epoch, self.pmdec_dic_vals[i], color=self.colormap(self.normalize(self.nValues[i])), alpha=0.3)
 
-            # plot the most likely one
-            ax1.plot(self.epoch, self.mualp_ml, color='black')
-            ax2.plot(self.epoch, self.mudec_ml, color='black')
+            # plot the most likely ones
+            ax1.plot(self.epoch, self.pmra_ml, color='black')
+            ax2.plot(self.epoch, self.pmdec_ml, color='black')
 
             # manually change the x tick labels from JD to calendar years
             epoch_ticks = np.linspace(self.start_epoch, self.end_epoch, 5)
@@ -1019,13 +1008,13 @@ class OrbitPlots:
 # OPs = OrbitPlots('HD4747', 3850, (1990, 2030), 'msec')
 # OPs = OrbitPlots('HD92987', 52472, (1990, 2030), 'msec')
 # OPs = OrbitPlots('HD45701', 30480, (1990, 2030), 'msec')
-OPs = OrbitPlots('Gl86', 10138, (1960, 2050), 'msec', RVfile='HD13445_AAT_accelcorrected.vels', burnin=500, nplanets=2)
+# OPs = OrbitPlots('Gl86', 10138, (1960, 2050), 'msec', RVfile='HD13445_AAT_accelcorrected.vels', burnin=500, steps=15000, nplanets=2)
 # OPs.astrometry()
 # OPs.RV()
 # OPs.relRV()
 # OPs.relsep()
 # OPs.PA()
-OPs.properMotion()
+# OPs.properMotion()
 
 plt.show()
 
