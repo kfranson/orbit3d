@@ -329,7 +329,7 @@ cdef class Model:
         dDecs_H1 = np.empty(self.nAst)
         dRAs_H2 = np.empty(self.nAst)
         dDecs_H2 = np.empty(self.nAst)
-        
+
         for i in range(self.nAst):
             dRAs_G[i] = self.dRA_G[i]
             dRAs_H1[i] = self.dRA_H1[i]
@@ -1156,7 +1156,7 @@ def calcL(Data data, Params par, Model model, bint freemodel=True,
         RVzero_np = np.zeros(data.nInst)
         for i in range(data.nInst):
             RVzero_np[i] = RVzero[i]
-        
+
         PyMem_Free(RVzero)
         model.free()
 
