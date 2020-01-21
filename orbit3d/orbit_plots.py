@@ -329,12 +329,6 @@ class OrbitPlots:
         JD = int(365.25*y) + int(30.6001*(m+1)) + B + 1720996.5  + D + UT/24.
         return JD
 
-    def chi_sqr(self, offset, f_ml, epoch_obs, data_obs, data_obs_err):
-        chi_sqr = 0
-        for i in range(len(epoch_obs)):
-            chi_sqr += (f_ml(epoch_obs[i]) - data_obs[i] - offset)**2 / data_obs_err[i]**2
-        return chi_sqr
-
 
     ############### plot astrometric orbit ###############
 
@@ -1031,6 +1025,7 @@ plt.show()
 # change the way of sorting the dictionary so that it is applicable for either single companion or multiple companions
 # no longer use similar triangle to plot the observed astrometric data points but use relsep*sin/cos(PA) directly
 # compute the values instead of interpolation
+# use extras[-1] as RVzero instead of using chi_sqr to calculate
 
 
 
