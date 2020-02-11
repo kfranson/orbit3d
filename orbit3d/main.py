@@ -80,7 +80,7 @@ def initialize_data(config):
                                  central_epoch_ra=to_jd(data.epRA_H),
                                  central_epoch_dec=to_jd(data.epDec_H),
                                  format='jd', normed=False)
-        Hip1_fitter = Astrometry('Hip2', '%06d' % (HipID), Hip1DataDir,
+        Hip1_fitter = Astrometry('Hip2', '%06d' % (HipID), Hip2DataDir,
                                  central_epoch_ra=to_jd(data.epRA_H),
                                  central_epoch_dec=to_jd(data.epDec_H),
                                  format='jd', normed=False)
