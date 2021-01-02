@@ -625,7 +625,7 @@ class OrbitPlots:
         ax2.xaxis.set_minor_locator(AutoMinorLocator())
         ax2.yaxis.set_minor_locator(AutoMinorLocator())
 
-        ax2.set_xticks(ax2.get_xticks()[::2])
+        # ax2.set_xticks(ax2.get_xticks()[::2])
             
         ax2.tick_params(direction='in', which='both', left=True, right=True, bottom=True, top=True)
         ax2.set_xlabel('Epoch (yr)', fontsize=13)
