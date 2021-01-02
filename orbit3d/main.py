@@ -15,8 +15,10 @@ from astropy.io import fits
 from htof.main import Astrometry
 from astropy.time import Time
 import sys
+import re
 from orbit3d import orbit
 from orbit3d.config import parse_args
+import pkg_resources
 
 _loglkwargs = {}
 
@@ -123,7 +125,7 @@ def initialize_data(config, companion_gaia):
                           epochs_Hip1=Hip1_fitter.data.julian_day_epoch(),
                           epochs_Hip2=Hip2_fitter.data.julian_day_epoch(),
                           epochs_Gaia=Gaia_fitter.data.julian_day_epoch(),
-                          companion_gaia=companion_gaia)
+                          companion_gaia=companion_gaia, verbose=False)
     else:
         hip1_fast_fitter, hip2_fast_fitter, gaia_fast_fitter = None, None, None
 
@@ -165,14 +167,11 @@ def lnprob(theta, returninfo=False, RVoffsets=False, use_epoch_astrometry=False,
     else:
         orbit.calc_PMs_no_epoch_astrometry(data, model)
 
-    #print(model.pmra_H, model.pmra_G, model.pmra_HG, params.msec)
-        
     if returninfo:
         return orbit.calcL(data, params, model, chisq_resids=True, RVoffsets=RVoffsets)
 
     if priors is not None:
-        #params = orbit.Params(theta, icompanion_propermotion, nplanets)
-        return orbit.lnprior(params) + orbit.calcL(data, params, model) - 0.5*(params.mpri - priors['mpri'])**2/priors['mpri_sig']**2
+        return lnp - 0.5*(params.mpri - priors['mpri'])**2/priors['mpri_sig']**2 + orbit.calcL(data, params, model)
     else:
         return lnp - np.log(params.mpri) + orbit.calcL(data, params, model)
 
@@ -202,6 +201,7 @@ def run():
     ntemps = config.getint('mcmc_settings', 'ntemps')
     nplanets = config.getint('mcmc_settings', 'nplanets')
     nstep = config.getint('mcmc_settings', 'nstep')
+    thin = config.getint('mcmc_settings', 'thin', fallback=50)
     nthreads = config.getint('mcmc_settings', 'nthreads')
     use_epoch_astrometry = config.getboolean('mcmc_settings', 'use_epoch_astrometry', fallback=False)
     HipID = config.getint('data_paths', 'HipID', fallback=0)
@@ -212,10 +212,11 @@ def run():
     priors['mpri'] = config.getfloat('priors_settings', 'mpri', fallback = 1.)
     priors['mpri_sig'] = config.getfloat('priors_settings', 'mpri_sig', fallback = np.inf)
     priors['minjit'] = config.getfloat('priors_settings', 'minjitter', fallback = 1e-5)
+    priors['minjit'] = max(priors['minjit'], 1e-20) # effectively zero, but we need the log
     priors['minjit'] = 2*np.log10(priors['minjit'])
     priors['maxjit'] = config.getfloat('priors_settings', 'maxjitter', fallback = 1e3)
     priors['maxjit'] = 2*np.log10(priors['maxjit'])
-    assert priors['maxjit'] > priors['minjit']
+    assert priors['maxjit'] > priors['minjit'], "Requested maximum jitter < minimum jitter"
 
     # Secondary star in Gaia with a measured proper motion?
     companion_gaia = {}
@@ -232,7 +233,7 @@ def run():
     ndim = par0[0, 0, :].size
     data, H1f, H2f, Gf = initialize_data(config, companion_gaia)
     # set arguments for emcee PTSampler and the log-likelyhood (lnprob)
-    samplekwargs = {'thin': 50}
+    samplekwargs = {'thin': thin}
     loglkwargs = {'returninfo': False, 'use_epoch_astrometry': use_epoch_astrometry,
         'data': data, 'nplanets': nplanets, 'H1f': H1f, 'H2f': H2f, 'Gf': Gf, 'priors': priors}
     _loglkwargs = loglkwargs
@@ -245,14 +246,23 @@ def run():
                             threads=nthreads)
     
     print("Running MCMC ... ")
-    sample0.run_mcmc(par0, nstep, **samplekwargs)
+    #sample0.run_mcmc(par0, nstep, **samplekwargs)
     #add a progress bar
-    for i, result in enumerate(sample0.sample(par0, iterations=nstep)):
-        width = 30
-        n = int((width+1) * float(i) / nstep)
+    width = 30
+    N = min(100, nstep//thin)
+    n_taken = 0
+    sys.stdout.write("[{0}]  {1}%".format(' ' * width, 0))
+    for ipct in range(N):
+        dn = (((nstep*(ipct + 1))//N - n_taken)//thin)*thin
+        n_taken += dn
+        if ipct == 0:
+            sample0.run_mcmc(par0, dn, **samplekwargs)
+        else:
+            # Continue from last step
+            sample0.run_mcmc(sample0.chain[..., -1, :], dn, **samplekwargs)
+        n = int((width+1) * float(ipct + 1) / N)
         sys.stdout.write("\r[{0}{1}]".format('#' * n, ' ' * (width - n)))
-        if (i+1) % 100 == 0:
-            sys.stdout.write("{0:5.1%}".format(float(i) / nstep))
+        sys.stdout.write("%3d%%" % (int(100*(ipct + 1)/N)))
     sys.stdout.write("\n")
         
     print('Total Time: %.0f seconds' % (time.time() - start_time))
@@ -273,8 +283,27 @@ def run():
             
             if data.nInst > 0:
                 parfit[i, j, 8:] = RVoffsets
-    
-    out = fits.HDUList(fits.PrimaryHDU(sample0.chain[0].astype(np.float32)))
+
+    hdu = fits.PrimaryHDU(sample0.chain[0].astype(np.float32))
+    version = pkg_resources.get_distribution("orbit3d").version
+    hdu.header.append(('version', version, 'Code version'))
+    for line in open(args.config_file):
+        line = line[:-1]
+        try:
+            if '=' in line and not line.startswith('#'):
+                keys = re.split('[ ]*=[ ]*', line)
+                # hierarch and continue cards are incompatible.  Hacky fix.
+                if len(keys[0]) > 8 and len(keys[0]) + len(keys[1]) + 13 > 80:
+                    n_over = len(keys[0]) + len(keys[1]) + 13 - 80
+                    hdu.header.append((keys[0], keys[1][:-n_over]), end=True)
+                else:
+                    hdu.header.append((keys[0], keys[1]), end=True)
+            elif not line.startswith('#'):
+                hdu.header.append(('comment', line[:80]), end=True)
+        except:
+            continue
+
+    out = fits.HDUList(hdu)
     out.append(fits.PrimaryHDU(sample0.lnprobability[0].astype(np.float32)))
     out.append(fits.PrimaryHDU(parfit.astype(np.float32)))
     for i in range(1000):

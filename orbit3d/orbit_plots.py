@@ -23,7 +23,7 @@ class Orbit:
     def __init__(self, OP, step='best', epochs='custom'):
 
         data = orbit.Data(OP.Hip, OP.RVfile, OP.relAstfile, verbose=False)
-        
+
         if isinstance(epochs, list) or isinstance(epochs, np.ndarray):
             data.custom_epochs(epochs, iplanet=OP.iplanet)
         elif epochs == 'custom':
@@ -100,10 +100,10 @@ class OrbitPlots:
         # load observed RV data
         self.epoch_obs, self.RV_obs, self.RV_obs_err, self.nInst, self.epoch_obs_dic, self.RV_obs_dic, self.RV_obs_err_dic = self.load_obsRV_data()
         # load relative astrometry data:
-        if os.access(self.relAstfile,os.R_OK):
+        try: #if os.access(self.relAstfile,os.R_OK):
             self.have_reldat = True
-            self.ep_relAst_obs, self.relsep_obs, self.relsep_obs_err, self.PA_obs, self.PA_obs_err = self.load_relAst_data()
-        else:
+            self.ep_relAst_obs, self.relsep_obs, self.relsep_obs_err, self.PA_obs, self.PA_obs_err, self.ast_indx = self.load_relAst_data(self.iplanet)
+        except: #else:
             self.have_reldat = False
         # load HGCA data:
         self.ep_mualp_obs, self.ep_mudec_obs, self.mualp_obs, self.mudec_obs, self.mualp_obs_err, self.mudec_obs_err = self.load_HGCA_data()        
@@ -223,17 +223,31 @@ class OrbitPlots:
         RV_obs_err_dic = {}
         
         for i in range(nInst):
-            idx_dic[i] = (np.where(self.RVinst == i)[0][0], np.where(self.RVinst == i)[0][-1])
-            epoch_obs_dic[i] = epoch_obs[idx_dic[i][0]: idx_dic[i][-1] + 1]
-            RV_obs_dic[i] = RV_obs[idx_dic[i][0]: idx_dic[i][-1] + 1]
-            RV_obs_err_dic[i] = RV_obs_err[idx_dic[i][0]: idx_dic[i][-1] + 1]
+            idx_dic[i] = (np.where(self.RVinst == i)[0])
+            epoch_obs_dic[i] = epoch_obs[idx_dic[i]]
+            RV_obs_dic[i] = RV_obs[idx_dic[i]]
+            RV_obs_err_dic[i] = RV_obs_err[idx_dic[i]]
         return epoch_obs, RV_obs, RV_obs_err, nInst, epoch_obs_dic, RV_obs_dic, RV_obs_err_dic
 
-    def load_relAst_data(self):
+    def load_relAst_data(self, iplanet=None):
         """
             Function to load in the relative astrometry data
         """
         reldat = np.genfromtxt(self.relAstfile, usecols=(0,1,2,3,4))
+        if len(reldat.shape) == 1:
+            reldat = np.reshape(reldat, (1, -1))
+
+        try:
+            icompanion = np.genfromtxt(self.relAstfile, usecols=(6)).astype(int)
+        except:
+            icompanion = np.zeros(reldat.shape[0]).astype(int)
+
+        indx = np.where(icompanion == iplanet)
+        if iplanet is not None:
+            reldat = reldat[indx]
+        if len(reldat) == 0:
+            return None
+
         # Try to guess whether we should assume the epochs of the
         # relative astrometry file to be decimal years or JD.
         if np.median(reldat[:, 0]) < 3000:
@@ -242,13 +256,13 @@ class OrbitPlots:
             relep = reldat[:, 0]
 
         ep_relAst_obs = relep #reldat[:, 0]
-        for i in range(len(ep_relAst_obs)):
-            #ep_relAst_obs[i] = self.calendar_to_JD(ep_relAst_obs[i])
-            relsep_obs = reldat[:, 1]
-            relsep_obs_err = reldat[:, 2]
-            PA_obs = reldat[:, 3]
-            PA_obs_err = reldat[:, 4]
-        return ep_relAst_obs, relsep_obs, relsep_obs_err, PA_obs, PA_obs_err
+
+        relsep_obs = reldat[:, 1]
+        relsep_obs_err = reldat[:, 2]
+        PA_obs = reldat[:, 3]
+        PA_obs_err = reldat[:, 4]
+        
+        return ep_relAst_obs, relsep_obs, relsep_obs_err, PA_obs, PA_obs_err, indx
     
     def load_HGCA_data(self):
         """
@@ -460,7 +474,7 @@ class OrbitPlots:
 
         print("Plotting Astrometry orbits, your plot is generated at " + self.outputdir)
         plt.tight_layout()
-        plt.savefig(os.path.join(self.outputdir,'astrometric_orbit_' + self.title)+'.pdf') # or +'.png'
+        plt.savefig(os.path.join(self.outputdir,'astrometric_orbit_' + self.title)+'.pdf', transparent=True) # or +'.png'
 
 # 2. RV orbits plot
 
@@ -529,7 +543,7 @@ class OrbitPlots:
 
         plt.tight_layout()
         print("Plotting RV orbits, your plot is generated at " + self.outputdir)
-        plt.savefig(os.path.join(self.outputdir, 'RV_orbit_' + self.title)+'.pdf',bbox_inches='tight', dpi=200) # or +'.pdf'
+        plt.savefig(os.path.join(self.outputdir, 'RV_orbit_' + self.title)+'.pdf', transparent=True, bbox_inches='tight', dpi=200) # or +'.pdf'
 
 
 # 3. relative RV plot
@@ -653,7 +667,7 @@ class OrbitPlots:
             fig.delaxes(cbar_ax)
 
         print("Plotting relative RV, your plot is generated at " + self.outputdir)
-        plt.savefig(os.path.join(self.outputdir, 'relRV_OC_' + self.title + '_Inst' + np.str(self.whichInst) +'.pdf'),bbox_inches='tight', dpi=200)
+        plt.savefig(os.path.join(self.outputdir, 'relRV_OC_' + self.title + '_Inst' + np.str(self.whichInst) +'.pdf'), transparent=True, bbox_inches='tight', dpi=200)
 ################################################################################################
 
 
@@ -691,7 +705,7 @@ class OrbitPlots:
             ax1.errorbar(ep_relAst_obs_calendar, self.relsep_obs, yerr=self.relsep_obs_err, color=self.marker_color, fmt='o', ecolor='black', capsize=3, markersize=5, zorder=299)
             ax1.scatter(ep_relAst_obs_calendar, self.relsep_obs, s=45, facecolors='none', edgecolors='k', alpha=1, zorder=300)
 
-            dat_OC = self.relsep_obs - orb_ml.relsep
+            dat_OC = self.relsep_obs - orb_ml.relsep[self.ast_indx]
             
             ax2.errorbar(ep_relAst_obs_calendar, dat_OC, yerr=self.relsep_obs_err, color=self.marker_color, fmt='o', ecolor='black', capsize=3, markersize=5, zorder=299)
             ax2.scatter(ep_relAst_obs_calendar, dat_OC, s=45, facecolors='none', edgecolors='k', alpha=1, zorder=300)
@@ -707,7 +721,7 @@ class OrbitPlots:
             ax1.xaxis.set_minor_locator(AutoMinorLocator())
             ax1.yaxis.set_minor_locator(AutoMinorLocator())
             ax1.tick_params(direction='in', which='both', left=True, right=True, bottom=True, top=True)
-            ax1.set_ylabel('Seperation (arcsec)', labelpad=13, fontsize=13)
+            ax1.set_ylabel('Separation (arcsec)', labelpad=13, fontsize=13)
             # ax2
             range_datOC = max(dat_OC) - min(dat_OC)
             if np.abs(min(dat_OC)) <= np.abs(max(dat_OC)):
@@ -760,12 +774,12 @@ class OrbitPlots:
             ax.xaxis.set_minor_locator(AutoMinorLocator())
             ax.yaxis.set_minor_locator(AutoMinorLocator())
             ax.tick_params(direction='in', which='both', left=True, right=True, bottom=True, top=True)
-            ax.set_ylabel('Seperation (arcsec)', fontsize=13)
+            ax.set_ylabel('Separation (arcsec)', fontsize=13)
             ax.set_xlabel('Epoch (year)', labelpad=6, fontsize=13)
                 
         plt.tight_layout()
         print("Plotting Separation, your plot is generated at " + self.outputdir)
-        plt.savefig(os.path.join(self.outputdir, 'relsep_OC_' + self.title)+'.pdf',bbox_inches='tight', dpi=200)
+        plt.savefig(os.path.join(self.outputdir, 'relsep_OC_' + self.title)+'.pdf', transparent=True, bbox_inches='tight', dpi=200)
 ################################################################################################
 
 
@@ -803,7 +817,7 @@ class OrbitPlots:
                 ep_relAst_obs_calendar.append(self.JD_to_calendar(self.ep_relAst_obs[i]))
             ax1.errorbar(ep_relAst_obs_calendar, self.PA_obs, yerr=self.PA_obs_err, color=self.marker_color, fmt='o', ecolor='black', capsize=3, markersize=5, zorder=299)
             ax1.scatter(ep_relAst_obs_calendar, self.PA_obs, s=45, facecolors='none', edgecolors='k', alpha=1, zorder=300)
-            dat_OC = self.PA_obs - orb_ml.PA
+            dat_OC = self.PA_obs - orb_ml.PA[self.ast_indx]
 
             ax2.errorbar(ep_relAst_obs_calendar, dat_OC, yerr=self.PA_obs_err, color=self.marker_color, fmt='o', ecolor='black', capsize=3, markersize=5, zorder=299)
             ax2.scatter(ep_relAst_obs_calendar, dat_OC, s=45, facecolors='none', edgecolors='k', alpha=1, zorder=300)
@@ -876,7 +890,7 @@ class OrbitPlots:
         
         plt.tight_layout()
         print("Plotting Position Angle, your plot is generated at " + self.outputdir)
-        plt.savefig(os.path.join(self.outputdir,'PA_OC_' + self.title)+'.pdf',bbox_inches='tight', dpi=200)
+        plt.savefig(os.path.join(self.outputdir,'PA_OC_' + self.title)+'.pdf',bbox_inches='tight', dpi=200, transparent=True)
 ################################################################################################
 
 
@@ -1027,7 +1041,7 @@ class OrbitPlots:
                         else:
                             cbar.ax.get_yaxis().labelpad=self.colorbar_pad # defult value = 20
                         figure.delaxes(cbar_ax)
-                        figure.savefig(os.path.join(self.outputdir, 'ProperMotions_' + name + self.title)+'.pdf',bbox_inches='tight', dpi=200)
+                        figure.savefig(os.path.join(self.outputdir, 'ProperMotions_' + name + self.title)+'.pdf', transparent=True, bbox_inches='tight', dpi=200)
                 else:
                     cbar_ax = fig.add_axes([1.5, 0.16, 0.05, 0.7])
                     if self.colorbar_size < 0 or self.colorbar_pad < 0:
@@ -1040,7 +1054,7 @@ class OrbitPlots:
                     else:
                         cbar.ax.get_yaxis().labelpad=self.colorbar_pad # defult value = 20
                     fig.delaxes(cbar_ax)
-                    fig.savefig(os.path.join(self.outputdir, 'Proper_Motions_' + self.title)+'.pdf',bbox_inches='tight', dpi=200)
+                    fig.savefig(os.path.join(self.outputdir, 'Proper_Motions_' + self.title)+'.pdf', transparent=True, bbox_inches='tight', dpi=200)
         else:
             fig = plt.figure(figsize=(11, 5.5))
             ax1 = fig.add_axes((0.10, 0.1, 0.35, 0.77))
@@ -1079,10 +1093,10 @@ class OrbitPlots:
         print("Plotting Proper Motions, your plot is generated at " + self.outputdir)
         
         if self.pm_separate and not self.usecolorbar:
-            fig.savefig(os.path.join(self.outputdir, 'ProperMotions_RA_' + self.title)+'.pdf',bbox_inches='tight', dpi=200)
-            fig1.savefig(os.path.join(self.outputdir, 'ProperMotions_Dec_' + self.title)+'.pdf',bbox_inches='tight', dpi=200)
+            fig.savefig(os.path.join(self.outputdir, 'ProperMotions_RA_' + self.title)+'.pdf', transparent=True, bbox_inches='tight', dpi=200)
+            fig1.savefig(os.path.join(self.outputdir, 'ProperMotions_Dec_' + self.title)+'.pdf', transparent=True, bbox_inches='tight', dpi=200)
         elif not self.usecolorbar:
-            fig.savefig(os.path.join(self.outputdir, 'Proper_Motions_' + self.title)+'.pdf',bbox_inches='tight', dpi=200)
+            fig.savefig(os.path.join(self.outputdir, 'Proper_Motions_' + self.title)+'.pdf', transparent=True, bbox_inches='tight', dpi=200)
             
 ################################################################################################
 
@@ -1192,7 +1206,7 @@ class OrbitPlots:
                 'Location of %s, %.1f' % (self.text_name, self.predicted_ep_ast), fontsize=14)
         ax.invert_xaxis()
         plt.tight_layout()
-        plt.savefig(os.path.join(self.outputdir,'astrometric_prediction_' + self.title)+'.pdf')
+        plt.savefig(os.path.join(self.outputdir,'astrometric_prediction_' + self.title)+'.pdf', transparent=True)
 
 # 7. Corner plot
     ################################################################################################
@@ -1226,10 +1240,43 @@ class OrbitPlots:
         figure = corner_modified.corner(chain, labels=labels, quantiles=[0.16, 0.5, 0.84], range=[0.999 for l in labels], verbose=False, show_titles=True, title_kwargs={"fontsize": 12}, hist_kwargs={"lw":1.}, label_kwargs={"fontsize":15}, xlabcord=(0.5,-0.45), ylabcord=(-0.45,0.5),  **kwargs)
 
         print("Plotting Corner plot, your plot is generated at " + self.outputdir)
-        plt.savefig(os.path.join(self.outputdir, 'Corner_' + self.title)+'.pdf')
+        plt.savefig(os.path.join(self.outputdir, 'Corner_' + self.title)+'.pdf', transparent=True)
 
 ###################################################################################################
 ###################################################################################################
+
+#diagnostic plots
+
+    def plot_chains(self,labels=None,burnin=500,thin=1,alpha=0.1):
+        labels=['Jitter','Mpri','Msec','a',r'$\mathrm{\sqrt{e}\, sin\, \omega}$',r'$\mathrm{\sqrt{e}\, cos\, \omega}$','inc','asc','lam' ]
+        print("Generating diagonstic plots to check convergence")
+
+        tt, lnp, extras = [fits.open(self.MCMCfile)[i].data for i in range(3)]
+        tt = tt[:, self.burnin:, :]
+        nwalkers = tt.shape[0]
+        chain = tt
+        ndim = chain.shape[2]
+        nwalkers = chain.shape[0]
+        
+        fig, ax = plt.subplots(nrows=ndim,sharex=True, figsize=(10,7))
+        for i in range(ndim):
+            for walker in range(nwalkers):
+                ax[i].plot(chain[walker,:,i],color="black",alpha=alpha,lw=0.5);
+            if labels:
+                ax[i].set_ylabel(labels[i],fontsize=15,labelpad = 10)
+                ax[i].margins(y=0.1)
+            for label in ax[i].get_yticklabels():
+                label.set_fontsize(15)
+                
+            ax[i].yaxis.set_label_coords(-0.1, 0.5)
+
+        ax[i].set_xlabel("sample",fontsize=15)
+        ax[i].minorticks_on()
+        ax[0].set_title("Overview of chains",y=1.03,fontsize=15)
+        for label in ax[i].get_xticklabels():
+                label.set_fontsize(15)
+        plt.savefig(os.path.join(self.outputdir, 'Diagnostic_' + self.title)+'.png')
+
 
 #save data
 
@@ -1239,14 +1286,15 @@ class OrbitPlots:
             par_label = ['plx_best', 'pmra_best', 'pmdec_best', 'chisq_sep', 'chisq_PA', 'chisq_H', 'chisq_HG', 'chisq_G', 'RV_off']
             print("Saving beststep parameters to " + self.outputdir)
             text_file = open(os.path.join(self.outputdir, 'beststep_params_' + self.title) +'.txt', "w")
-            for i in range(self.extras[self.lnp == np.amax(self.lnp)].shape[1]):
+            indx = self.lnp == np.amax(self.lnp)
+            for i in range(self.extras.shape[-1]):
                 if i<8:
                     text_file.write(par_label[i])
-                    text_file.write("  %f"%round(self.extras[self.lnp == np.amax(self.lnp)].flatten()[i],10))
+                    text_file.write("  %f"%round(self.extras[indx][0][i],10))
                     text_file.write("\n")
                 if i>=8:
                     text_file.write(par_label[8]+str(i-8))
-                    text_file.write("  %f"%round(self.extras[self.lnp == np.amax(self.lnp)].flatten()[i],10))
+                    text_file.write("  %f"%round(self.extras[indx][0][i],10))
                     text_file.write("\n")
             text_file.close()
         
@@ -1299,17 +1347,17 @@ class OrbitPlots:
             a = print_par_values(chain[:,3+di],perc_sigmas)
             sqesino = print_par_values(chain[:,4+di],perc_sigmas)
             sqecoso = print_par_values(chain[:,5+di],perc_sigmas)
-            inc = print_par_values((chain[:,6+di]*180/np.pi)%(360),perc_sigmas)
-            asc = print_par_values((chain[:,7+di]*180/np.pi)%(360),perc_sigmas)
-            lam = print_par_values((chain[:,8+di]*180/np.pi)%(360),perc_sigmas)
+            inc = print_par_values((chain[:,6+di]*180/np.pi)%(180),perc_sigmas)
+            asc = print_par_values((chain[:,7+di]*180/np.pi)%(180),perc_sigmas)
+            lam = print_par_values((chain[:,8+di]*180/np.pi)%(180),perc_sigmas)
             plx = print_par_values(extras[:,0],perc_sigmas)
             period_data = np.sqrt(chain[:,3+di]**3/(chain[:,1+di] + chain[:,2+di]))
             period = print_par_values(period_data,perc_sigmas)
-            omega_data=(np.arctan2(chain[:,4+di],chain[:,5+di])%(2*np.pi))
+            omega_data=(np.arctan2(chain[:,4+di],chain[:,5+di])%(2*np.pi))*180/np.pi
             omega = print_par_values(omega_data,perc_sigmas)
             e = print_par_values(chain[:,4+di]**2 + chain[:,5+di]**2,perc_sigmas)
-            sma = print_par_values(1e3/206264.80624538*chain[:,0+di],perc_sigmas)
-            t0_data = 2455197.5 - period_data*(chain[:,8+di]*180/np.pi - omega_data*180/np.pi)/360. #reference epoch 2455197.5
+            sma = print_par_values(1e3/206264.80624538*chain[:,3+di],perc_sigmas)
+            t0_data = 2455197.5 - 365.25*period_data*((chain[:,8+di]*180/np.pi)%(180) - omega_data)/360. #reference epoch 2455197.5
             t0 = print_par_values(t0_data,perc_sigmas)
             q = print_par_values(chain[:,2+di]/chain[:,1+di],perc_sigmas)
             

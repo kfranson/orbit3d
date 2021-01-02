@@ -130,11 +130,12 @@ cdef class Data:
             if verbose:
                 print("Loaded data from %d RV instruments." % (self.nInst))
         except:
-            if verbose:
-                print("Unable to read RV instruments from fourth column.")
-                print("Assuming all data are from one instrument.")
-            self.RVinst = (rvdat[:, 2]*0).astype(np.int32)
-            self.nInst = 1
+            if self.nRV > 0:
+                if verbose:
+                    print("Unable to read RV instruments from fourth column.")
+                    print("Assuming all data are from one instrument.")
+                self.RVinst = (rvdat[:, 2]*0).astype(np.int32)
+                self.nInst = 1
 
         try:
             try:
@@ -661,7 +662,7 @@ def calc_EA_RPP(Data data, Params par, Model model):
             # are not in the singular corner.
             #############################################################
 
-            if _MA + (1 - par.ecc) > 0.25:
+            if 2*_MA + (1 - par.ecc) > 0.2:
                 for j in range(11, -1, -1):
                     if _MA > bounds[j]:
                         break
@@ -692,7 +693,8 @@ def calc_EA_RPP(Data data, Params par, Model model):
 
             # Second order approximation.
 
-            #dEA = num*denom/(denom**2 + 0.5*sinEA*num)
+            if _MA > 0.4:
+                dEA = num*denom/(denom**2 + 0.5*sinEA*num)
 
             # This brings the scheme to third order.
 
@@ -701,9 +703,9 @@ def calc_EA_RPP(Data data, Params par, Model model):
             # Replaced the preceding two lines with the following,
             # which requires only one division (this is Householder's
             # third order formula)
-
-            dEA = num*(denom**2 + 0.5*num*sinEA)
-            dEA /= denom*denom**2 + num*(denom*sinEA + one_sixth*num*cosEA)
+            else:
+                dEA = num*(denom**2 + 0.5*num*sinEA)
+                dEA /= denom*denom**2 + num*(denom*sinEA + one_sixth*num*cosEA)
 
             dEAsq_d6 = dEA*dEA*one_sixth
 
@@ -774,16 +776,16 @@ def calc_offsets(Data data, Params par, Model model, int iplanet=0):
         ###################################################################
         
         if data.ast_planetID[i] == iplanet:        
-            model.rel_RA[i] += -par.sau/a_1*dRA
-            model.rel_Dec[i] += -par.sau/a_1*dDec
+            model.rel_RA[i] += par.sau/a_1*dRA
+            model.rel_Dec[i] += par.sau/a_1*dDec
         elif par.all_sau[data.ast_planetID[i]] > par.all_sau[iplanet]:    
-            model.rel_RA[i] += dRA
-            model.rel_Dec[i] += dDec
+            model.rel_RA[i] -= dRA
+            model.rel_Dec[i] -= dDec
 
         # If we are at the last companion, convert to sep, PA
         if iplanet == par.nplanets - 1:
             model.relsep[i] = sqrt(model.rel_RA[i]**2 + model.rel_Dec[i]**2)
-            model.PA[i] = atan2(-model.rel_RA[i], -model.rel_Dec[i])
+            model.PA[i] = atan2(model.rel_RA[i], model.rel_Dec[i])
 
     i1 = data.nRV + data.nAst
     i2 = i1 + data.nHip1
@@ -1253,8 +1255,13 @@ def calcL(Data data, Params par, Model model, bint freemodel=True,
 
     M[1*3 + 1] = data.Cinv_H[0, 0] + data.Cinv_HG[0, 0] + data.Cinv_G[0, 0]
     M[1*3 + 2] = data.Cinv_H[0, 1] + data.Cinv_HG[0, 1] + data.Cinv_G[0, 1]
-    M[2*3 + 1] = M[1*3 + 2]
     M[2*3 + 2] = data.Cinv_H[1, 1] + data.Cinv_HG[1, 1] + data.Cinv_G[1, 1]
+    if data.Cinv_G_B[0, 0] != 0:
+        M[1*3 + 1] += data.Cinv_G_B[0, 0]
+        M[1*3 + 2] += data.Cinv_G_B[0, 1]
+        M[2*3 + 2] += data.Cinv_G_B[1, 1]
+
+    M[2*3 + 1] = M[1*3 + 2]
 
     b[1] = data.pmra_H*data.Cinv_H[0, 0] + data.pmdec_H*data.Cinv_H[0, 1]
     b[1] += data.pmra_HG*data.Cinv_HG[0, 0] + data.pmdec_HG*data.Cinv_HG[0, 1]
@@ -1337,8 +1344,8 @@ def calcL(Data data, Params par, Model model, bint freemodel=True,
 
     # Now take care of the companion
     if data.Cinv_G_B[0, 0] != 0:
-        deltaRA = model.pmra_G_B - data.pmra_G_B + pmra_best
-        deltaDec = model.pmdec_G_B - data.pmdec_G_B + pmdec_best
+        deltaRA = plx_best*model.pmra_G_B - data.pmra_G_B + pmra_best
+        deltaDec = plx_best*model.pmdec_G_B - data.pmdec_G_B + pmdec_best
         chisq_G += deltaRA**2*data.Cinv_G_B[0, 0]
         chisq_G += deltaDec**2*data.Cinv_G_B[1, 1]
         chisq_G += 2*deltaRA*deltaDec*data.Cinv_G_B[0, 1]
