@@ -1336,7 +1336,7 @@ class OrbitPlots:
             di = 7*self.iplanet
             
             #save posterior and derived parameters
-            RV_Jitter = print_par_values(chain[:,0+di],perc_sigmas)
+            RV_Jitter = print_par_values(10**(0.5*chain[:,0+di]),perc_sigmas)
             Mpri = print_par_values(chain[:,1+di],perc_sigmas)
             if self.cmref == 'msec_solar':
                 Msec = print_par_values(chain[:,2+di],perc_sigmas)
@@ -1350,7 +1350,7 @@ class OrbitPlots:
             inc = print_par_values((chain[:,6+di]*180/np.pi)%(180),perc_sigmas)
             asc = print_par_values((chain[:,7+di]*180/np.pi)%(180),perc_sigmas)
             lam = print_par_values((chain[:,8+di]*180/np.pi)%(180),perc_sigmas)
-            plx = print_par_values(extras[:,0],perc_sigmas)
+            plx = print_par_values(extras[:,0] * 1E3,perc_sigmas)  # times 1E3 converts arcsec to mas
             period_data = np.sqrt(chain[:,3+di]**3/(chain[:,1+di] + chain[:,2+di]))
             period = print_par_values(period_data,perc_sigmas)
             omega_data=(np.arctan2(chain[:,4+di],chain[:,5+di])%(2*np.pi))*180/np.pi
